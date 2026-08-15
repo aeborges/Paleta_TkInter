@@ -59,3 +59,7 @@ Sem dependências externas — só a biblioteca padrão (`tkinter`, `colorsys`).
   em código — traduzir só o rótulo quebraria a utilidade de "copiar o
   nome pra usar no código"). Só os grupos de busca/filtro são em
   português.
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE).
