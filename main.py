@@ -12,6 +12,35 @@ from tkinter import ttk
 from cores_dados import COLORS
 
 # ---------------------------------------------------------------------------
+# Paleta visual do próprio app (tokens de cor da interface, não das amostras)
+# ---------------------------------------------------------------------------
+
+BG_APP = "#F3F4F8"        # fundo geral, cinza levemente azulado
+BG_TOOLBAR = "#FFFFFF"     # barra de busca/filtros, "elevada" sobre o fundo
+BG_GRADE = "#EAEBF1"       # área de rolagem das amostras
+TEXT = "#1E2130"
+TEXT_MUTED = "#6B7086"
+BORDER = "#DADCE6"
+ACCENT = "#5B5FEF"         # indigo — cor de interação (busca, filtro ativo, hover)
+ACCENT_SOFT = "#E7E7FC"
+SUCESSO = "#2FAE72"        # feedback de "copiado"
+
+# Cor representativa de cada grupo, usada como "bolinha" no filtro
+COR_DOT_GRUPO = {
+    "Todas": None,
+    "Vermelhos": "#E63946",
+    "Laranjas": "#F4A261",
+    "Amarelos": "#F6C445",
+    "Verdes": "#43AA8B",
+    "Ciano": "#2EC4B6",
+    "Azuis": "#4A6FE3",
+    "Roxos": "#8E5FE0",
+    "Rosas": "#F15BB5",
+    "Marrons": "#8B5E3C",
+    "Neutros": "#9AA0AC",
+}
+
+# ---------------------------------------------------------------------------
 # Classificação de tonalidade (grupo em português)
 # ---------------------------------------------------------------------------
 
@@ -81,23 +110,29 @@ def luminancia_relativa(r, g, b):
 
 LARGURA_SWATCH = 172
 ALTURA_SWATCH = 64
-ESPACO = 6
+ESPACO = 8
 
 
 class PaletaDeCores(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Paleta de Cores TkInter")
+        self.title("Paleta de Cores TkInter — consulta de cores nomeadas")
         self.geometry("1100x700")
         self.minsize(700, 600)
+        self.configure(bg=BG_APP)
 
         self.grupo_ativo = tk.StringVar(value="Todas")
         self.termo_busca = tk.StringVar()
-        self._largura_atual = 0
         self._resize_job = None
+        self._flash_jobs = {}
+        self._chips_grupo = {}
 
         self._preparar_dados()
         self._montar_interface()
+        # Força o Tk a calcular a geometria real da janela antes do primeiro
+        # desenho — sem isso, canvas.winfo_width() ainda reporta o valor de
+        # stub (1px) e a grade inteira cai numa única coluna.
+        self.update_idletasks()
         self._renderizar()
 
     # -- dados ---------------------------------------------------------
@@ -128,52 +163,109 @@ class PaletaDeCores(tk.Tk):
             estilo.theme_use("clam")
         except tk.TclError:
             pass
-        estilo.configure("Grupo.TButton", padding=(10, 4))
-        estilo.configure("GrupoAtivo.TButton", padding=(10, 4))
+        estilo.configure("TFrame", background=BG_APP)
+        estilo.configure("Toolbar.TFrame", background=BG_TOOLBAR)
+        estilo.configure("TLabel", background=BG_APP, foreground=TEXT)
+        estilo.configure("Toolbar.TLabel", background=BG_TOOLBAR, foreground=TEXT)
+        estilo.configure("Muted.TLabel", background=BG_TOOLBAR, foreground=TEXT_MUTED)
+        estilo.configure(
+            "Busca.TEntry", fieldbackground="#FFFFFF", bordercolor=BORDER,
+            lightcolor=BORDER, darkcolor=BORDER, padding=6,
+        )
+        estilo.map("Busca.TEntry", bordercolor=[("focus", ACCENT)])
 
-        topo = ttk.Frame(self, padding=(12, 10, 12, 6))
+        toolbar = tk.Frame(self, bg=BG_TOOLBAR, highlightbackground=BORDER, highlightthickness=1)
+        toolbar.pack(fill="x")
+
+        topo = ttk.Frame(toolbar, padding=(14, 12, 14, 8), style="Toolbar.TFrame")
         topo.pack(fill="x")
 
-        ttk.Label(topo, text="Buscar:").pack(side="left")
-        entrada = ttk.Entry(topo, textvariable=self.termo_busca, width=28)
-        entrada.pack(side="left", padx=(6, 16))
+        ttk.Label(topo, text="🔍", style="Toolbar.TLabel", font=("Segoe UI", 11)).pack(side="left")
+        entrada = ttk.Entry(topo, textvariable=self.termo_busca, width=32, style="Busca.TEntry")
+        entrada.pack(side="left", padx=(6, 16), ipady=2)
         entrada.bind("<KeyRelease>", lambda e: self._renderizar())
         entrada.focus_set()
 
-        self.label_contagem = ttk.Label(topo, text="", foreground="#666666")
+        ttk.Label(topo, text="Nome, código hex ou termo em português", style="Muted.TLabel",
+                  font=("Segoe UI", 8)).pack(side="left")
+
+        self.label_contagem = ttk.Label(topo, text="", style="Muted.TLabel", font=("Segoe UI", 9, "bold"))
         self.label_contagem.pack(side="right")
 
-        barra_grupos = ttk.Frame(self, padding=(12, 0, 12, 8))
+        barra_grupos = ttk.Frame(toolbar, padding=(14, 0, 14, 12), style="Toolbar.TFrame")
         barra_grupos.pack(fill="x")
-        self._botoes_grupo = {}
         for grupo in GRUPOS_EM_ORDEM:
-            btn = ttk.Button(
-                barra_grupos, text=grupo, style="Grupo.TButton",
-                command=lambda g=grupo: self._selecionar_grupo(g),
-            )
-            btn.pack(side="left", padx=(0, 4))
-            self._botoes_grupo[grupo] = btn
-        self._atualizar_destaque_grupo()
+            self._criar_chip_grupo(barra_grupos, grupo)
+        self._padronizar_largura_chips()
 
+        rodape_status = tk.Frame(self, bg=BG_APP)
+        rodape_status.pack(fill="x")
         self.status = tk.StringVar(value="Clique numa cor para copiar o código hexadecimal.")
-        ttk.Label(self, textvariable=self.status, padding=(12, 0, 12, 6),
-                  foreground="#666666").pack(fill="x")
+        tk.Label(rodape_status, textvariable=self.status, bg=BG_APP, fg=TEXT_MUTED,
+                 font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=14, pady=(8, 6))
 
-        corpo = ttk.Frame(self)
-        corpo.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        corpo = tk.Frame(self, bg=BG_APP)
+        corpo.pack(fill="both", expand=True, padx=14, pady=(0, 14))
 
-        self.canvas = tk.Canvas(corpo, highlightthickness=0, bg="#FAFAFA")
+        self.canvas = tk.Canvas(corpo, highlightthickness=0, bg=BG_GRADE)
         scroll = ttk.Scrollbar(corpo, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scroll.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-        self.grade = tk.Frame(self.canvas, bg="#FAFAFA")
+        self.grade = tk.Frame(self.canvas, bg=BG_GRADE)
         self._janela_grade = self.canvas.create_window((0, 0), window=self.grade, anchor="nw")
 
         self.grade.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", self._ao_redimensionar)
         self.canvas.bind_all("<MouseWheel>", self._rolar_mouse)
+
+    def _criar_chip_grupo(self, parent, grupo):
+        cor_dot = COR_DOT_GRUPO.get(grupo)
+        ativo = grupo == self.grupo_ativo.get()
+        bg = ACCENT_SOFT if ativo else BG_TOOLBAR
+        borda = ACCENT if ativo else BORDER
+        fg = ACCENT if ativo else TEXT
+
+        chip = tk.Frame(parent, bg=bg, highlightbackground=borda, highlightthickness=1, cursor="hand2")
+        chip.pack(side="left", padx=(0, 6), pady=2)
+
+        # conteúdo (bolinha + texto) fica num frame interno, centralizado
+        # dentro do chip — assim todo chip pode ter a mesma largura fixa
+        # sem o conteúdo grudar na borda esquerda.
+        conteudo = tk.Frame(chip, bg=bg)
+        conteudo.pack(expand=True, pady=6)
+
+        widgets = [chip, conteudo]
+        dot = None
+        if cor_dot:
+            dot = tk.Canvas(conteudo, width=10, height=10, bg=bg, highlightthickness=0)
+            dot.create_oval(1, 1, 9, 9, fill=cor_dot, outline="")
+            dot.pack(side="left", padx=(0, 4))
+            widgets.append(dot)
+
+        label = tk.Label(
+            conteudo, text=grupo, bg=bg, fg=fg,
+            font=("Segoe UI", 9, "bold" if ativo else "normal"),
+        )
+        label.pack(side="left")
+        widgets.append(label)
+
+        for w in widgets:
+            w.bind("<Button-1>", lambda e, g=grupo: self._selecionar_grupo(g))
+
+        self._chips_grupo[grupo] = {"chip": chip, "conteudo": conteudo, "label": label, "dot": dot}
+
+    def _padronizar_largura_chips(self):
+        """Deixa todos os chips com a mesma largura do chip 'Vermelhos'
+        (o texto mais longo entre os grupos), pra alinhar a barra."""
+        self.update_idletasks()
+        referencia = self._chips_grupo["Vermelhos"]["chip"]
+        largura = referencia.winfo_reqwidth()
+        altura = referencia.winfo_reqheight()
+        for refs in self._chips_grupo.values():
+            refs["chip"].configure(width=largura, height=altura)
+            refs["chip"].pack_propagate(False)
 
     def _ao_redimensionar(self, evento):
         self.canvas.itemconfig(self._janela_grade, width=evento.width)
@@ -191,8 +283,16 @@ class PaletaDeCores(tk.Tk):
 
     def _atualizar_destaque_grupo(self):
         ativo = self.grupo_ativo.get()
-        for grupo, botao in self._botoes_grupo.items():
-            botao.configure(style="GrupoAtivo.TButton" if grupo == ativo else "Grupo.TButton")
+        for grupo, refs in self._chips_grupo.items():
+            ligado = grupo == ativo
+            bg = ACCENT_SOFT if ligado else BG_TOOLBAR
+            borda = ACCENT if ligado else BORDER
+            fg = ACCENT if ligado else TEXT
+            refs["chip"].configure(bg=bg, highlightbackground=borda)
+            refs["conteudo"].configure(bg=bg)
+            refs["label"].configure(bg=bg, fg=fg, font=("Segoe UI", 9, "bold" if ligado else "normal"))
+            if refs["dot"] is not None:
+                refs["dot"].configure(bg=bg)
 
     # -- filtragem e desenho ---------------------------------------------
 
@@ -214,6 +314,7 @@ class PaletaDeCores(tk.Tk):
     def _renderizar(self):
         for widget in self.grade.winfo_children():
             widget.destroy()
+        self._flash_jobs.clear()
 
         cores = self._cores_filtradas()
         self.label_contagem.configure(text=f"{len(cores)} cor(es)")
@@ -231,7 +332,7 @@ class PaletaDeCores(tk.Tk):
     def _criar_swatch(self, c, linha, coluna):
         quadro = tk.Frame(
             self.grade, bg=c["hex"], width=LARGURA_SWATCH, height=ALTURA_SWATCH,
-            highlightbackground="#D0D0D0", highlightthickness=1, cursor="hand2",
+            highlightbackground="#C9CAD4", highlightthickness=1, cursor="hand2",
         )
         quadro.grid(row=linha, column=coluna, padx=ESPACO // 2, pady=ESPACO // 2, sticky="nsew")
         quadro.grid_propagate(False)
@@ -240,21 +341,43 @@ class PaletaDeCores(tk.Tk):
             quadro, text=c["nome"], bg=c["hex"], fg=c["fg"],
             font=("Segoe UI", 9, "bold"), cursor="hand2",
         )
-        nome_label.place(x=8, y=8)
+        nome_label.place(x=10, y=9)
 
         hex_label = tk.Label(
             quadro, text=c["hex"], bg=c["hex"], fg=c["fg"],
             font=("Consolas", 9), cursor="hand2",
         )
-        hex_label.place(x=8, y=ALTURA_SWATCH - 26)
+        hex_label.place(x=10, y=ALTURA_SWATCH - 27)
 
-        for widget in (quadro, nome_label, hex_label):
-            widget.bind("<Button-1>", lambda e, cor=c: self._copiar_hex(cor))
+        widgets = (quadro, nome_label, hex_label)
+        for widget in widgets:
+            widget.bind("<Button-1>", lambda e, cor=c, q=quadro: self._copiar_hex(cor, q))
+            widget.bind("<Enter>", lambda e, q=quadro: self._hover_swatch(q, True))
+            widget.bind("<Leave>", lambda e, q=quadro: self._hover_swatch(q, False))
 
-    def _copiar_hex(self, cor):
+    def _hover_swatch(self, quadro, entrando):
+        if str(quadro) in self._flash_jobs:
+            return  # não interfere com a animação de "copiado"
+        if entrando:
+            quadro.configure(highlightbackground=TEXT, highlightthickness=2)
+        else:
+            quadro.configure(highlightbackground="#C9CAD4", highlightthickness=1)
+
+    def _copiar_hex(self, cor, quadro):
         self.clipboard_clear()
         self.clipboard_append(cor["hex"])
         self.status.set(f"Copiado: {cor['hex']}  ({cor['nome']}, grupo {cor['grupo']})")
+
+        chave = str(quadro)
+        quadro.configure(highlightbackground=SUCESSO, highlightthickness=3)
+
+        def restaurar():
+            self._flash_jobs.pop(chave, None)
+            if quadro.winfo_exists():
+                quadro.configure(highlightbackground="#C9CAD4", highlightthickness=1)
+
+        job = self.after(350, restaurar)
+        self._flash_jobs[chave] = job
 
 
 if __name__ == "__main__":
