@@ -194,9 +194,13 @@ class PaletaDeCores(tk.Tk):
 
         barra_grupos = ttk.Frame(toolbar, padding=(14, 0, 14, 12), style="Toolbar.TFrame")
         barra_grupos.pack(fill="x")
-        for grupo in GRUPOS_EM_ORDEM:
-            self._criar_chip_grupo(barra_grupos, grupo)
-        self._padronizar_largura_chips()
+        for indice, grupo in enumerate(GRUPOS_EM_ORDEM):
+            self._criar_chip_grupo(barra_grupos, grupo, indice)
+        # "uniform" faz todas as colunas terem a mesma largura; weight=1 faz
+        # elas se esticarem juntas pra preencher o espaço restante da barra
+        # — os chips ficam com largura igual E distribuídos por toda a linha.
+        for indice in range(len(GRUPOS_EM_ORDEM)):
+            barra_grupos.grid_columnconfigure(indice, weight=1, uniform="chip")
 
         rodape_status = tk.Frame(self, bg=BG_APP)
         rodape_status.pack(fill="x")
@@ -220,7 +224,7 @@ class PaletaDeCores(tk.Tk):
         self.canvas.bind("<Configure>", self._ao_redimensionar)
         self.canvas.bind_all("<MouseWheel>", self._rolar_mouse)
 
-    def _criar_chip_grupo(self, parent, grupo):
+    def _criar_chip_grupo(self, parent, grupo, indice):
         cor_dot = COR_DOT_GRUPO.get(grupo)
         ativo = grupo == self.grupo_ativo.get()
         bg = ACCENT_SOFT if ativo else BG_TOOLBAR
@@ -228,7 +232,7 @@ class PaletaDeCores(tk.Tk):
         fg = ACCENT if ativo else TEXT
 
         chip = tk.Frame(parent, bg=bg, highlightbackground=borda, highlightthickness=1, cursor="hand2")
-        chip.pack(side="left", padx=(0, 6), pady=2)
+        chip.grid(row=0, column=indice, sticky="nsew", padx=3, pady=2)
 
         # conteúdo (bolinha + texto) fica num frame interno, centralizado
         # dentro do chip — assim todo chip pode ter a mesma largura fixa
@@ -255,17 +259,6 @@ class PaletaDeCores(tk.Tk):
             w.bind("<Button-1>", lambda e, g=grupo: self._selecionar_grupo(g))
 
         self._chips_grupo[grupo] = {"chip": chip, "conteudo": conteudo, "label": label, "dot": dot}
-
-    def _padronizar_largura_chips(self):
-        """Deixa todos os chips com a mesma largura do chip 'Vermelhos'
-        (o texto mais longo entre os grupos), pra alinhar a barra."""
-        self.update_idletasks()
-        referencia = self._chips_grupo["Vermelhos"]["chip"]
-        largura = referencia.winfo_reqwidth()
-        altura = referencia.winfo_reqheight()
-        for refs in self._chips_grupo.values():
-            refs["chip"].configure(width=largura, height=altura)
-            refs["chip"].pack_propagate(False)
 
     def _ao_redimensionar(self, evento):
         self.canvas.itemconfig(self._janela_grade, width=evento.width)
