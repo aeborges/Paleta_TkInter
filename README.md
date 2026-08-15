@@ -25,12 +25,23 @@ que só desenhava a lista inteira em tela cheia, sem busca nem código de cor.
 
 ```
 Cores_Tkinter/
-  main.py          # aplicativo (classificação de grupo + interface)
-  cores_dados.py   # lista de nomes de cores X11 conhecidos pelo Tk
-  legado/          # script original, mantido como referência histórica
+  main.py                  # aplicativo (classificação de grupo + interface)
+  Paleta_de_Cores.pyw      # lançador sem console (clique duas vezes)
+  cores_dados.py           # lista de nomes de cores X11 conhecidos pelo Tk
+  legado/                  # script original, mantido como referência histórica
 ```
 
 ## Rodar
+
+Uso normal, sem a janela preta do terminal atrás do app — dê duplo clique em
+`Paleta_de_Cores.pyw` (Windows abre `.pyw` com `pythonw.exe` automaticamente),
+ou rode:
+
+```
+pythonw Paleta_de_Cores.pyw
+```
+
+Pra depurar com saída de erro visível no terminal:
 
 ```
 python main.py
